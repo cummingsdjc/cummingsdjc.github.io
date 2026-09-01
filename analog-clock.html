@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Analog Clock</title>
+<style>
+  :root {
+    --bg-color: #ffffff;
+    --clock-face: #ffffff;
+    --clock-border: #333333;
+    --number-color: #222222;
+    --hand-color: #222222;
+    --second-hand-color: #c0392b;
+    --tick-color: #666666;
+    --digital-color: #222222;
+  }
+  body.dark {
+    --bg-color: #000000;
+    --clock-face: #000000;
+    --clock-border: #999999;
+    --number-color: #cccccc;
+    --hand-color: #cccccc;
+    --second-hand-color: #cccccc;
+    --tick-color: #888888;
+    --digital-color: #cccccc;
+  }
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    background: var(--bg-color);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: Georgia, 'Times New Roman', serif;
+    transition: background 0.3s ease;
+  }
+  .clock {
+    position: relative;
+    width: 300px;
+    height: 300px;
+    border-radius: 50%;
+    background: var(--clock-face);
+    border: 4px solid var(--clock-border);
+    box-sizing: border-box;
+  }
+  .tick {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 2px;
+    height: 12px;
+    background: var(--tick-color);
+    transform: translateX(-50%);
+    transform-origin: 50% 0%;
+    margin-left: 0;
+  }
+  .number {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 0;
+    height: 0;
+    font-size: 22px;
+    color: var(--number-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform-origin: 0 0;
+  }
+  .number span {
+    display: inline-block;
+    transform: translate(-50%, -50%);
+  }
+  .hand {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    background: var(--hand-color);
+    transform-origin: 50% 100%;
+    border-radius: 4px;
+  }
+  .hour-hand {
+    width: 7px;
+    height: 75px;
+    margin-left: -3.5px;
+    margin-top: -75px;
+  }
+  .minute-hand {
+    width: 5px;
+    height: 105px;
+    margin-left: -2.5px;
+    margin-top: -105px;
+  }
+  .second-hand {
+    width: 2px;
+    height: 115px;
+    margin-left: -1px;
+    margin-top: -115px;
+    background: var(--second-hand-color);
+  }
+  .center-dot {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 12px;
+    height: 12px;
+    margin-left: -6px;
+    margin-top: -6px;
+    background: var(--hand-color);
+    border-radius: 50%;
+  }
+  .digital {
+    margin-top: 20px;
+    font-size: 28px;
+    color: var(--digital-color);
+    letter-spacing: 1px;
+  }
+  .date-display {
+    margin-bottom: 20px;
+    font-size: 18px;
+    color: var(--number-color);
+    letter-spacing: 0.5px;
+  }
+</style>
+</head>
+<body>
+
+<div class="date-display" id="dateDisplay"></div>
+<div class="clock" id="clock">
+  <div class="center-dot"></div>
+  <div class="hand hour-hand" id="hourHand"></div>
+  <div class="hand minute-hand" id="minuteHand"></div>
+  <div class="hand second-hand" id="secondHand"></div>
+</div>
+<div class="digital" id="digital"></div>
+
+<script>
+  // ---- Read URL parameters ----
+  const params = new URLSearchParams(window.location.search);
+  let tzParam = params.get('tz'); // e.g. "America/New_York"
+  const darkParam = ['true', '1', 'yes'].includes((params.get('dark') || '').toLowerCase());
+  const digitalParam = ['true', '1', 'yes'].includes((params.get('digital') || '').toLowerCase());
+
+  if (darkParam) {
+    document.body.classList.add('dark');
+  }
+
+  const digitalEl = document.getElementById('digital');
+  if (!digitalParam) {
+    digitalEl.style.display = 'none';
+  }
+
+  // ---- Build clock face: Roman numeral hours + minute dash ticks ----
+  const clock = document.getElementById('clock');
+  const romanNumerals = ['XII','I','II','III','IV','V','VI','VII','VIII','IX','X','XI'];
+  const radius = 120; // distance from center for numerals
+  const tickRadius = 138; // distance from center for tick marks (near edge)
+
+  // 60 minute ticks (dashes), skipping the hour positions handled by numerals
+  for (let i = 0; i < 60; i++) {
+    const angleDeg = i * 6;
+    const tick = document.createElement('div');
+    tick.className = 'tick';
+    tick.style.height = (i % 5 === 0) ? '4px' : '10px'; // thin dash near hour marks (numerals already mark hours)
+    tick.style.top = (150 - tickRadius) + 'px';
+    tick.style.transform = `translateX(-50%) rotate(${angleDeg}deg)`;
+    clock.appendChild(tick);
+  }
+
+  // Roman numeral hour labels
+  romanNumerals.forEach((num, i) => {
+    const angleDeg = i * 30;
+    const angleRad = (angleDeg - 90) * (Math.PI / 180);
+    const x = 160 + radius * Math.cos(angleRad);
+    const y = 155 + radius * Math.sin(angleRad);
+    const el = document.createElement('div');
+    el.className = 'number';
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    const span = document.createElement('span');
+    span.textContent = num;
+    el.appendChild(span);
+    clock.appendChild(el);
+  });
+
+  // ---- Get current time in the requested time zone ----
+  function getTimeParts() {
+    const now = new Date();
+    let hours, minutes, seconds, hour12String;
+
+    try {
+      const options24 = {
+        hour: 'numeric', minute: 'numeric', second: 'numeric',
+        hour12: false, timeZone: tzParam || undefined
+      };
+      const parts = new Intl.DateTimeFormat('en-US', options24).formatToParts(now);
+      const get = (type) => parts.find(p => p.type === type).value;
+      hours = parseInt(get('hour'), 10) % 24;
+      minutes = parseInt(get('minute'), 10);
+      seconds = parseInt(get('second'), 10);
+
+      const options12 = {
+        hour: 'numeric', minute: '2-digit', hour12: true,
+        timeZone: tzParam || undefined
+      };
+      hour12String = new Intl.DateTimeFormat('en-US', options12).format(now);
+    } catch (e) {
+      // Invalid timezone parameter — fall back to local time
+      hours = now.getHours();
+      minutes = now.getMinutes();
+      seconds = now.getSeconds();
+      hour12String = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    }
+
+    return { hours, minutes, seconds, hour12String };
+  }
+
+  // ---- Ordinal suffix for date (1st, 2nd, 3rd, 4th, ...) ----
+  function ordinalSuffix(day) {
+    if (day % 10 === 1 && day % 100 !== 11) return 'st';
+    if (day % 10 === 2 && day % 100 !== 12) return 'nd';
+    if (day % 10 === 3 && day % 100 !== 13) return 'rd';
+    return 'th';
+  }
+
+  // ---- Formatted date string: "Day, Month Date Year" ----
+  function getFormattedDate() {
+    const now = new Date();
+    let weekday, month, day, year;
+
+    try {
+      const options = {
+        weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+        timeZone: tzParam || undefined
+      };
+      const parts = new Intl.DateTimeFormat('en-US', options).formatToParts(now);
+      const get = (type) => parts.find(p => p.type === type).value;
+      weekday = get('weekday');
+      month = get('month');
+      day = parseInt(get('day'), 10);
+      year = get('year');
+    } catch (e) {
+      // Invalid timezone parameter — fall back to local time
+      weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
+      month = now.toLocaleDateString('en-US', { month: 'long' });
+      day = now.getDate();
+      year = now.getFullYear();
+    }
+
+    return `${weekday}, ${month} ${day}${ordinalSuffix(day)} ${year}`;
+  }
+
+  const dateDisplayEl = document.getElementById('dateDisplay');
+
+  const hourHand = document.getElementById('hourHand');
+  const minuteHand = document.getElementById('minuteHand');
+  const secondHand = document.getElementById('secondHand');
+
+  function updateClock() {
+    const { hours, minutes, seconds, hour12String } = getTimeParts();
+
+    const secondsDeg = seconds * 6;
+    const minutesDeg = minutes * 6 + seconds * 0.1;
+    const hoursDeg = (hours % 12) * 30 + minutes * 0.5;
+
+    hourHand.style.transform = `rotate(${hoursDeg}deg)`;
+    minuteHand.style.transform = `rotate(${minutesDeg}deg)`;
+    secondHand.style.transform = `rotate(${secondsDeg}deg)`;
+
+    if (digitalParam) {
+      digitalEl.textContent = hour12String.replace(/\u202F/g, ' '); // normalize narrow no-break space
+    }
+
+    dateDisplayEl.textContent = getFormattedDate();
+  }
+
+  updateClock();
+  setInterval(updateClock, 1000);
+</script>
+
+</body>
+</html>
